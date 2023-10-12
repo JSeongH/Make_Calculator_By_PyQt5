@@ -4,9 +4,9 @@ from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
 from PyQt5 import uic
 from PyQt5.QtCore import QThread
-from pynput import keyboard
 
-from_class = uic.loadUiType("/home/jo/dev_ws/PyQt/Source/pyqt5/carculator.ui")[0]
+
+from_class = uic.loadUiType("/home/jo/dev_ws/PyQt/Source/pyqt5/calculator.ui")[0]
 
 
 class MyCalculator(QMainWindow, from_class):
@@ -17,6 +17,9 @@ class MyCalculator(QMainWindow, from_class):
 
         self.default_display = ""
         self.input_line.setText(self.default_display)
+
+        self.error_list = ['-0.09999999999999998']
+        self.four_base = ['+', '−', '×', '÷']
 
         self.num_0.clicked.connect(lambda:self.number_Clicked(0))
         self.num_1.clicked.connect(lambda:self.number_Clicked(1))
@@ -54,32 +57,97 @@ class MyCalculator(QMainWindow, from_class):
         
 
     def number_Clicked(self, num):
+        self.error_line.clear()
         if self.input_line.text() == self.default_display or self.input_line.text() == '0':
             display = ''
         else:
             display = self.input_line.text()
 
-        display += str(num)
+
+        # 개선사항 1 23.10.11
+        if len(display) >= 1:
+            if display[-1] == '²':
+                self.error_line.setText("연산자를 먼저 사용해주세요.")
+            elif display[-1] == ')':
+                display = display + '×' + str(num)
+            else:
+                display += str(num)
+        else:
+            display += str(num)
+
         self.input_line.setText(display)
 
     
     def point_Clicked(self, point):
+        self.error_line.clear()
         if self.input_line.text() == self.default_display:
             display = '0'
         else:
             display = self.input_line.text()
 
-        display += str(point)
+        # 개선사항 2 : 소수점 연속사용 금지 23.10.11
+        count = 0
+        for i in display[::-1]:
+            if i.isdigit():
+                pass
+            elif i == '.':
+                count += 1
+            else:
+                break
+        
+        if count == 0:
+            display += str(point)
+        else:
+            self.error_line.setText("더이상 소수점을 사용할수 없습니다.")
         self.input_line.setText(display)
 
         
     def operation_Clicked(self, oper):
+        self.error_line.clear()
         if self.input_line.text() == self.default_display:
             display = ''
         else:
             display = self.input_line.text()
 
-        display += str(oper)
+       
+        if len(display) >= 1 and display[-1] == '.':
+            self.error_line.setText("소수점 뒤에 연산자를 사용할 수 없습니다.")
+
+        elif str(oper) == '×':
+            if len(display) == 0:
+                self.error_line.setText("곱셈 연산자를 사용할수 없습니다.")
+            else:
+                if display[-1] in self.four_base:
+                    self.error_line.setText("이전연산자와 연속해서 사용할 수 없습니다.")
+                elif display[-1] == '(':
+                    self.error_line.setText("개괄호 바로 다음으로 사용할 수 없습니다.")
+                else:
+                    display += str(oper)
+
+        elif str(oper) == '÷':
+            if len(display) == 0:
+                self.error_line.setText("나눗셈 연산자를 사용할수 없습니다.")
+            else:
+                if display[-1] in self.four_base:
+                    self.error_line.setText("이전연산자와 연속해서 사용할 수 없습니다.")
+                elif display[-1] == '(':
+                    self.error_line.setText("개괄호 바로 다음으로 사용할 수 없습니다.")
+                else:
+                    display += str(oper)
+
+        else:
+            count = 0
+            if len(display) >= 1:
+                for i in display[:len(display)-3:-1]:
+                    if i in self.four_base:
+                        count += 1
+                    else:
+                        count = count
+            if count < 2:
+                display += str(oper)
+            else:
+                self.error_line.setText("연산자는 3개를 연속으로 사용할 수 없습니다.")
+        
         self.input_line.setText(display)
 
 
@@ -96,7 +164,12 @@ class MyCalculator(QMainWindow, from_class):
                 display = str(calc)
                 
             else:
-                display = str(format(calc, 'e'))
+                if str(calc) in self.error_list:
+                    display = str(format(calc, '.1f'))
+
+                else:
+                    display = str(format(calc, 'e'))
+
 
             if self.error_line.text() == '':
                 pass
@@ -106,15 +179,14 @@ class MyCalculator(QMainWindow, from_class):
             self.input_line.clear()
             self.input_line.setText(display)
             self.display_line.setText(previous_display + '\n' + mathmetical + '\n' \
-                                      + display.rstrip() + '\n' + '----------------------------')
+                                        + display.rstrip() + '\n' + '----------------------------')
         
         except:
-            error_list = ['..', '+*', '+/', '-*', '-/', '*/', '/*', '//']
             display = self.input_line.text()
             err_msg = traceback.format_exc()
 
-            for error in error_list:
-                if error in display:
+            for error in self.error_list:
+                if error in self.input_line.text():
                     self.error_line.setText("Error :" + error)
                 
                 else:
@@ -131,7 +203,11 @@ class MyCalculator(QMainWindow, from_class):
         else:
             display = self.input_line.text()
 
-        display += equation
+        # 개선사항 3 23.10.11
+        if str(equation) == '(' or str(equation) == ')':
+            display = self.paren_error(equation, display)
+        else:
+            display += equation
         self.input_line.setText(display)
 
 
@@ -176,7 +252,7 @@ class MyCalculator(QMainWindow, from_class):
         for _ in range(count):
             pro_num = ''
             for i in range(mathmetical.index('²')-1, -1, -1):
-                if mathmetical[i].isdigit():
+                if mathmetical[i].isdigit() or mathmetical[i] == '.':
                     pro_num += mathmetical[i]
                 else:
                     break
@@ -193,7 +269,7 @@ class MyCalculator(QMainWindow, from_class):
         for _ in range(count):
             div_num = ''
             for i in range(mathmetical.index('√')+1, len(mathmetical)):
-                if mathmetical[i].isdigit():
+                if mathmetical[i].isdigit() or mathmetical[i] == '.':
                     div_num += mathmetical[i]
                 else:
                     break
@@ -202,7 +278,31 @@ class MyCalculator(QMainWindow, from_class):
             mathmetical = mathmetical.replace('√' + div_num, div_num + '**(1/2)', 1)
         
         return mathmetical
+    
+
+    def paren_error(self, equation, display):
+        if str(equation) == '(':
+            if len(display) >= 1:
+                if display[-1] == '.':
+                    self.error_line.setText("소수점 뒤에 괄호를 사용할 수 없습니다.")
+                elif display[-1].isdigit() or display[-1] == ')':
+                    display = display + '*' + str(equation)
+                else:
+                    display += str(equation)
+            else:
+                display += str(equation)
         
+        elif str(equation) == ')':
+            count = display.count('(')
+            if display.count(')') < count:
+                if display[-1] == '(' or display[-1] == '.' or display[-1] in self.four_base:
+                    self.error_line.setText("폐괄호를 사용할 수 없습니다.")
+                else:
+                    display += str(equation)
+            else:
+                self.error_line.setText("더이상 폐괄호를 사용할 수 없습니다.")
+
+        return display
 
 
 
@@ -212,4 +312,3 @@ if __name__ == "__main__":
     myWindows.show()
 
     sys.exit(app.exec_())
-
